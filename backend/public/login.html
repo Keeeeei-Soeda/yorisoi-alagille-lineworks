@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ログイン | よりそい アラジール</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined">
+  <link rel="stylesheet" href="/css/alagille-auth.css">
+</head>
+<body>
+  <main class="auth-shell">
+    <a class="auth-brand" href="/login.html" aria-label="よりそい アラジール">
+      <img src="/assets/alagille-brand/generated/home-title-art-v1.png" alt="よりそい アラジール">
+    </a>
+    <section class="auth-panel" aria-labelledby="auth-title">
+      <h1 id="auth-title">家族ノートを開く</h1>
+      <p class="auth-lead">ご本人とご家族の記録を、アカウントごとに安全に管理します。</p>
+      <div class="auth-tabs" role="tablist" aria-label="ログイン方法">
+        <button id="login-tab" type="button" role="tab" aria-selected="true">ログイン</button>
+        <button id="register-tab" type="button" role="tab" aria-selected="false">新規登録</button>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <label class="auth-field">メールアドレス<input id="login-email" type="email" autocomplete="email" required></label>
+        <label class="auth-field">パスワード<input id="login-password" type="password" autocomplete="current-password" minlength="8" required></label>
+        <button class="auth-primary" type="submit">ログイン</button>
+        <button id="reset-password" class="auth-text-button" type="button">パスワードを忘れた方</button>
+      </form>
+
+      <form id="register-form" class="auth-form" hidden>
+        <div class="auth-progress" aria-label="登録の進み具合"><span data-register-progress="1">1</span><i></i><span data-register-progress="2">2</span></div>
+        <section id="register-account-step" class="auth-step" aria-labelledby="register-account-title">
+          <h2 id="register-account-title" class="auth-section-title">アカウントを作る</h2>
+          <p class="auth-field-note">まずは、ログインに使う情報だけを登録します。</p>
+          <label class="auth-field">メールアドレス<input id="register-email" type="email" autocomplete="email" required></label>
+          <label class="auth-field">パスワード<small>8文字以上</small><input id="register-password" type="password" autocomplete="new-password" minlength="8" required></label>
+          <button id="register-next" class="auth-primary" type="button">次へ</button>
+        </section>
+        <section id="register-profile-step" class="auth-step" aria-labelledby="register-profile-title" hidden>
+          <h2 id="register-profile-title" class="auth-section-title">どなたの記録を始めますか？</h2>
+          <p class="auth-field-note" data-patient-setup>細かなプロフィールは、あとから設定できます。</p>
+          <fieldset id="record-target-choice" class="auth-field record-target-choice" data-patient-setup><legend class="visually-hidden">記録する方</legend>
+            <label><input type="radio" name="recordTarget" value="self"><span><strong>自分の記録</strong><small>ご自身の診察や検査を残す</small></span></label>
+            <label><input type="radio" name="recordTarget" value="family" checked><span><strong>家族の記録</strong><small>お子さんやご家族の記録を残す</small></span></label>
+          </fieldset>
+          <label class="auth-field">あなたの呼び名<input id="display-name" type="text" maxlength="80" autocomplete="name" required placeholder="例：お母さん"></label>
+          <label id="patient-name-field" class="auth-field" data-patient-setup>記録する方の呼び名<input id="patient-name" type="text" maxlength="80" required placeholder="例：はるくん"></label>
+          <p class="auth-skip-note" data-patient-setup>生年月日やアバターは、記録を始めてから追加できます。</p>
+          <div class="auth-step-actions">
+            <button id="register-back" class="auth-secondary" type="button">戻る</button>
+            <button id="register-submit" class="auth-primary" type="submit">記録を始める</button>
+          </div>
+        </section>
+      </form>
+      <p id="auth-message" class="auth-message" role="alert" aria-live="polite"></p>
+    </section>
+    <p class="auth-privacy"><span class="material-symbols-outlined">lock</span><span>検査結果やお薬の記録は、参加している家族アカウントだけが確認できます。</span></p>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence, inMemoryPersistence, signOut } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
+
+    const firebaseConfig = {
+      projectId: 'yorisoi-dev-477515',
+      appId: '1:450637239907:web:e39acc4cbbe7197647ca56',
+      storageBucket: 'yorisoi-dev-477515.firebasestorage.app',
+      apiKey: 'AIzaSyAXaAZXL1SPv0rxtxpowlLO15CbaEoIFG0',
+      authDomain: 'yorisoi-dev-477515.firebaseapp.com',
+      messagingSenderId: '450637239907'
+    };
+    const auth = getAuth(initializeApp(firebaseConfig));
+    await setPersistence(auth, inMemoryPersistence);
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const inviteToken = params.get('invite') || '';
+    let hasServerSession = false;
+    let registerStep = 1;
+    const nextPath = (() => { const value = params.get('next') || '/?disease=alagille'; return value.startsWith('/') && !value.startsWith('//') ? value : '/?disease=alagille'; })();
+
+    function showMode(mode) {
+      const login = mode === 'login';
+      $('login-form').hidden = !login;
+      $('register-form').hidden = login;
+      $('login-tab').setAttribute('aria-selected', String(login));
+      $('register-tab').setAttribute('aria-selected', String(!login));
+      $('auth-message').textContent = '';
+      if (!login) showRegisterStep(hasServerSession ? 2 : 1);
+    }
+
+    function showRegisterStep(step) {
+      registerStep = step === 2 ? 2 : 1;
+      $('register-account-step').hidden = registerStep !== 1;
+      $('register-profile-step').hidden = registerStep !== 2;
+      document.querySelectorAll('[data-register-progress]').forEach((item) => {
+        item.classList.toggle('is-current', Number(item.dataset.registerProgress) === registerStep);
+        item.classList.toggle('is-complete', Number(item.dataset.registerProgress) < registerStep);
+      });
+      $('register-back').hidden = hasServerSession;
+      $('auth-message').textContent = '';
+    }
+
+    function syncRecordTarget() {
+      if (inviteToken) return;
+      const self = document.querySelector('input[name="recordTarget"]:checked')?.value === 'self';
+      $('patient-name-field').hidden = self;
+      $('patient-name').required = !self;
+    }
+
+    function pathWithWelcome() {
+      const target = new URL(nextPath, location.origin);
+      target.searchParams.set('welcome', '1');
+      return `${target.pathname}${target.search}${target.hash}`;
+    }
+
+    function friendlyError(error) {
+      const messages = {
+        'auth/email-already-in-use': 'このメールアドレスは登録済みです。ログインしてください。',
+        'auth/invalid-credential': 'メールアドレスまたはパスワードを確認してください。',
+        'auth/invalid-email': 'メールアドレスの形式を確認してください。',
+        'auth/weak-password': 'パスワードは8文字以上にしてください。',
+        'auth/too-many-requests': '操作が続いたため一時停止しています。少し待ってからお試しください。'
+      };
+      return messages[error.code] || error.message || '処理を完了できませんでした。';
+    }
+
+    async function createServerSession(user) {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch('/api/account/session', { method: 'POST', headers: { Authorization: `Bearer ${idToken}` } });
+      if (!response.ok) throw new Error('ログイン状態を保存できませんでした。');
+      hasServerSession = true;
+    }
+
+    async function acceptInvitation() {
+      const response = await fetch(`/api/family/invitations/${encodeURIComponent(inviteToken)}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: $('display-name').value, relationship: 'other' })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '家族ノートに参加できませんでした。');
+    }
+
+    async function withBusy(form, task) {
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      $('auth-message').textContent = '';
+      try { await task(); } catch (error) { $('auth-message').textContent = friendlyError(error); button.disabled = false; }
+    }
+
+    $('login-tab').addEventListener('click', () => showMode('login'));
+    $('register-tab').addEventListener('click', () => showMode('register'));
+    $('register-next').addEventListener('click', () => {
+      if (!$('register-email').reportValidity() || !$('register-password').reportValidity()) return;
+      showRegisterStep(2);
+    });
+    $('register-back').addEventListener('click', () => showRegisterStep(1));
+    document.querySelectorAll('input[name="recordTarget"]').forEach((input) => input.addEventListener('change', syncRecordTarget));
+
+    $('login-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      withBusy(event.currentTarget, async () => {
+        const credential = await signInWithEmailAndPassword(auth, $('login-email').value, $('login-password').value);
+        await createServerSession(credential.user);
+        const me = await fetch('/api/account/me').then((response) => response.json());
+        if (inviteToken && !me.needsOnboarding) { await acceptInvitation(); await signOut(auth); location.replace(nextPath); return; }
+        if (me.needsOnboarding) { showMode('register'); showRegisterStep(2); $('register-email').value = credential.user.email || ''; $('register-email').disabled = true; $('register-password').closest('label').hidden = true; return; }
+        await signOut(auth);
+        location.replace(nextPath);
+      });
+    });
+
+    $('register-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      withBusy(event.currentTarget, async () => {
+        let user = auth.currentUser;
+        if (!user && !hasServerSession) {
+          const credential = await createUserWithEmailAndPassword(auth, $('register-email').value, $('register-password').value);
+          user = credential.user;
+          await createServerSession(user);
+        }
+        if (inviteToken) {
+          await acceptInvitation();
+          if (auth.currentUser) await signOut(auth);
+          location.replace(nextPath);
+          return;
+        }
+        const response = await fetch('/api/account/bootstrap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recordTarget: document.querySelector('input[name="recordTarget"]:checked')?.value || 'family',
+            displayName: $('display-name').value,
+            patientName: document.querySelector('input[name="recordTarget"]:checked')?.value === 'self' ? $('display-name').value : $('patient-name').value,
+          })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '家族ノートを作成できませんでした。');
+        if (result.patientId) localStorage.setItem('alagille-current-patient-id', result.patientId);
+        if (auth.currentUser) await signOut(auth);
+        location.replace(pathWithWelcome());
+      });
+    });
+
+    $('reset-password').addEventListener('click', async () => {
+      const email = $('login-email').value.trim();
+      if (!email) { $('auth-message').textContent = 'メールアドレスを入力してください。'; return; }
+      try { await sendPasswordResetEmail(auth, email); $('auth-message').style.color = '#28745f'; $('auth-message').textContent = '再設定用メールを送信しました。'; }
+      catch (error) { $('auth-message').textContent = friendlyError(error); }
+    });
+
+    if (params.get('setup') === '1') showMode('register');
+    syncRecordTarget();
+    if (inviteToken) {
+      document.querySelector('.auth-lead').textContent = '招待された家族ノートへ参加します。';
+      $('register-profile-title').textContent = 'あなたの呼び名を教えてください';
+      $('register-submit').textContent = '家族ノートに参加する';
+      document.querySelectorAll('[data-patient-setup]').forEach((element) => { element.hidden = true; });
+      $('patient-name').required = false;
+    }
+
+    try {
+      const response = await fetch('/api/account/me');
+      if (response.ok) {
+        const me = await response.json();
+        hasServerSession = true;
+        if (!me.needsOnboarding && !inviteToken) {
+          location.replace(nextPath);
+        } else {
+          showMode('register');
+          showRegisterStep(2);
+          $('register-email').value = me.user?.email || '';
+          $('register-email').disabled = true;
+          $('register-password').required = false;
+          $('register-password').closest('label').hidden = true;
+          $('display-name').value = me.account?.displayName || '';
+        }
+      }
+    } catch {
+      // No server session yet; continue with the selected login mode.
+    }
+  </script>
+</body>
+</html>
